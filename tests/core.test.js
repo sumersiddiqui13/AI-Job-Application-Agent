@@ -17,6 +17,21 @@ test('scores a relevant job higher than an unrelated job', () => {
   assert.equal(shouldApply(unrelated, 75), false);
 });
 
+test('does not grant a large default score to a sparse title-only listing', () => {
+  const sparse = scoreJob({ title: 'Software Engineer', description: '' }, profile);
+  assert.ok(sparse < 75);
+  assert.equal(shouldApply(sparse, 75), false);
+});
+
+test('skill-rich matching can reach the application threshold', () => {
+  const strong = scoreJob({
+    title: 'Backend Developer',
+    description: 'Node.js React JavaScript API development',
+  }, profile);
+  assert.ok(strong >= 75);
+  assert.equal(shouldApply(strong, 75), true);
+});
+
 test('submission requires explicit approval', () => {
   const application = { status: 'prepared' };
   assert.equal(canSubmit(application, { approved: true }), false);
