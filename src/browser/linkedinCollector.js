@@ -24,6 +24,19 @@ async function textFromCard(card, selectors) {
   return '';
 }
 
+async function firstText(driver, selectors) {
+  for (const selector of selectors) {
+    try {
+      const element = await driver.findElement(By.css(selector));
+      const value = clean(await element.getText());
+      if (value) return value;
+    } catch {
+      // Try the next selector.
+    }
+  }
+  return '';
+}
+
 async function collectPage(driver) {
   await driver.wait(until.elementsLocated(By.css(JOB_CARD_SELECTOR)), 15000);
   const cards = await driver.findElements(By.css(JOB_CARD_SELECTOR));
@@ -65,6 +78,44 @@ async function collectPage(driver) {
   return jobs;
 }
 
+async function enrichJob(driver, job) {
+  try {
+    await driver.get(job.url);
+    await driver.wait(until.urlContains('linkedin.com/jobs/'), 10000);
+    await driver.sleep(700);
+
+    const description = await firstText(driver, [
+      '.jobs-description__content',
+      '.jobs-box__html-content',
+      '#job-details',
+    ]);
+    const title = await firstText(driver, [
+      '.job-details-jobs-unified-top-card__job-title',
+      '.jobs-unified-top-card__job-title',
+      'h1',
+    ]);
+    const company = await firstText(driver, [
+      '.job-details-jobs-unified-top-card__company-name',
+      '.jobs-unified-top-card__company-name',
+    ]);
+    const location = await firstText(driver, [
+      '.job-details-jobs-unified-top-card__bullet',
+      '.jobs-unified-top-card__bullet',
+    ]);
+
+    return {
+      ...job,
+      title: title || job.title,
+      company: company || job.company,
+      location: location || job.location,
+      description,
+      enrichedAt: new Date().toISOString(),
+    };
+  } catch {
+    return { ...job, description: '', enrichmentFailed: true };
+  }
+}
+
 async function clickNextPage(driver) {
   const selectors = [
     'button[aria-label*="Next"]',
@@ -95,8 +146,6 @@ export async function collectLinkedInJobs(config) {
   try {
     await driver.get(config.jobSearchUrl);
 
-    // If credentials are configured, use the normal LinkedIn login form.
-    // If they are not, the user can log in manually in the visible browser.
     if (config.linkedinUsername && config.linkedinPassword) {
       try {
         const username = await driver.wait(until.elementLocated(By.id('username')), config.collectionTimeoutMs);
@@ -106,7 +155,7 @@ export async function collectLinkedInJobs(config) {
         await password.submit();
         await driver.sleep(1500);
       } catch {
-        // An existing session or a changed login page is okay; continue to the search page.
+        // An existing session or changed login page is okay.
       }
     }
 
@@ -119,7 +168,12 @@ export async function collectLinkedInJobs(config) {
       if (!(await clickNextPage(driver))) break;
     }
 
-    return [...jobs.values()];
+    const collected = [...jobs.values()];
+    const enriched = [];
+    for (const job of collected.slice(0, config.maxJobsToEnrich)) {
+      enriched.push(await enrichJob(driver, job));
+    }
+    return enriched.concat(collected.slice(config.maxJobsToEnrich));
   } finally {
     await closeBrowser(driver);
   }
