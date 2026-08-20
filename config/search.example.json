@@ -1,0 +1,7 @@
+{
+  "locations": ["Canada"],
+  "workModes": ["remote"],
+  "employmentTypes": ["full-time"],
+  "titles": ["Software Engineer", "Backend Developer", "Full Stack Developer"],
+  "minimumMatchScore": 75
+}
