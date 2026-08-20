@@ -37,8 +37,8 @@ export function scoreJob(job, profile) {
   const skillMatches = profileSkills.filter((skill) => containsTerm(jobText, skill));
 
   // Up to 50 points: each verified profile skill found in the JD contributes
-  // evidence, capped so a long JD cannot overwhelm title relevance.
-  const skillScore = Math.min(50, skillMatches.length * 10);
+  // strong evidence, capped so a long JD cannot overwhelm title relevance.
+  const skillScore = Math.min(50, skillMatches.length * 15);
 
   // Only award required-skill points when the listing actually exposes a
   // requiredSkills field. Missing structured data is not evidence of a match.
