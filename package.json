@@ -1,18 +1,17 @@
 {
   "name": "ai-job-application-agent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Safety-first AI-assisted job application agent",
   "type": "module",
   "scripts": {
     "start": "node src/cli.js",
     "collect": "node src/cli.js collect",
+    "review": "node src/cli.js review",
     "test": "node --test",
     "check": "node --check src/cli.js"
   },
-  "engines": {
-    "node": ">=20"
-  },
+  "engines": { "node": ">=20" },
   "dependencies": {
     "dotenv": "^16.4.7",
     "selenium-webdriver": "^4.27.0"
