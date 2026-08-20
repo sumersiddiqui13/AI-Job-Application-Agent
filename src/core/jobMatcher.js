@@ -8,31 +8,39 @@ function tokenSet(text) {
   return new Set(normalized(text).split(/\s+/).filter(Boolean));
 }
 
-/**
- * Score a job against verified profile data.
- * This is intentionally deterministic; an AI semantic scorer can be added later.
- */
+function matchedSkills(job, profile) {
+  const jobText = normalized(`${job.title ?? ''} ${job.description ?? ''} ${(job.skills ?? []).join(' ')}`);
+  return (profile.skills ?? []).filter((skill) => jobText.includes(normalized(skill)));
+}
+
 export function scoreJob(job, profile) {
   const jobText = normalized(`${job.title ?? ''} ${job.description ?? ''} ${(job.skills ?? []).join(' ')}`);
   const profileSkills = (profile.skills ?? []).map(normalized).filter(Boolean);
   const requiredSkills = (job.requiredSkills ?? []).map(normalized).filter(Boolean);
-
   const matchedRequired = requiredSkills.filter((skill) => jobText.includes(skill));
   const skillMatches = profileSkills.filter((skill) => jobText.includes(skill));
-
-  const skillScore = profileSkills.length
-    ? (skillMatches.length / profileSkills.length) * 55
-    : 0;
-  const requiredScore = requiredSkills.length
-    ? (matchedRequired.length / requiredSkills.length) * 35
-    : 35;
-
+  const skillScore = profileSkills.length ? (skillMatches.length / profileSkills.length) * 55 : 0;
+  const requiredScore = requiredSkills.length ? (matchedRequired.length / requiredSkills.length) * 35 : 35;
   const titleTokens = tokenSet(job.title);
   const targetTokens = new Set((profile.targetTitles ?? []).flatMap((x) => [...tokenSet(x)]));
   const titleOverlap = [...titleTokens].filter((x) => targetTokens.has(x)).length;
   const titleScore = targetTokens.size ? Math.min(10, (titleOverlap / Math.min(4, targetTokens.size)) * 10) : 0;
-
   return clamp(skillScore + requiredScore + titleScore);
+}
+
+export function explainJobMatch(job, profile) {
+  const skills = matchedSkills(job, profile);
+  const targets = profile.targetTitles ?? [];
+  const title = String(job.title ?? '').toLowerCase();
+  const titleMatch = targets.find((target) => title.includes(String(target).toLowerCase()));
+  return {
+    matchedSkills: skills,
+    titleMatch: titleMatch || null,
+    summary: [
+      skills.length ? `Matched skills: ${skills.slice(0, 6).join(', ')}` : 'No verified skill matches found.',
+      titleMatch ? `Target title match: ${titleMatch}` : 'No direct target-title match.',
+    ].join(' '),
+  };
 }
 
 export function shouldApply(score, minimumScore = 75) {

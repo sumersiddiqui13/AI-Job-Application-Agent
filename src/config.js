@@ -16,6 +16,7 @@ export function loadConfig(env = process.env) {
     profilePath: env.PROFILE_PATH || './data/profile.json',
     applicationsPath: env.APPLICATIONS_PATH || './data/applications.json',
     searchConfigPath: env.SEARCH_CONFIG_PATH || './config/search.json',
+    openAiApiKey: env.OPENAI_API_KEY || '',
     openAiModel: env.OPENAI_MODEL || 'gpt-4o-mini',
     jobSearchUrl: env.JOB_SEARCH_URL || 'https://www.linkedin.com/jobs/',
     linkedinUsername: env.LINKEDIN_USERNAME || '',
@@ -25,5 +26,6 @@ export function loadConfig(env = process.env) {
     maxJobPages: numberFromEnv('MAX_JOB_PAGES', 3, env),
     maxJobsToEnrich: numberFromEnv('MAX_JOBS_TO_ENRICH', 20, env),
     collectionTimeoutMs: numberFromEnv('JOB_COLLECTION_TIMEOUT_MS', 15000, env),
+    reviewPort: numberFromEnv('REVIEW_PORT', 4173, env),
   };
 }
