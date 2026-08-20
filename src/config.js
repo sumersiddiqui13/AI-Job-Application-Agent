@@ -27,5 +27,6 @@ export function loadConfig(env = process.env) {
     maxJobsToEnrich: numberFromEnv('MAX_JOBS_TO_ENRICH', 20, env),
     collectionTimeoutMs: numberFromEnv('JOB_COLLECTION_TIMEOUT_MS', 15000, env),
     reviewPort: numberFromEnv('REVIEW_PORT', 4173, env),
+    executionScreenshotDir: env.EXECUTION_SCREENSHOT_DIR || './data/execution-screenshots',
   };
 }
