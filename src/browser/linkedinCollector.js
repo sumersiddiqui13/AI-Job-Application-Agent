@@ -11,11 +11,29 @@ function jobKey(job) {
   return job.url || `${job.title}|${job.company}|${job.location}`.toLowerCase();
 }
 
+async function textFromElement(element) {
+  try {
+    const text = clean(await element.getText());
+    if (text) return text;
+  } catch {
+    // Fall through to attributes.
+  }
+  for (const attribute of ['aria-label', 'title']) {
+    try {
+      const value = clean(await element.getAttribute(attribute));
+      if (value) return value;
+    } catch {
+      // Try the next attribute.
+    }
+  }
+  return '';
+}
+
 async function textFromCard(card, selectors) {
   for (const selector of selectors) {
     try {
       const element = await card.findElement(By.css(selector));
-      const value = clean(await element.getText());
+      const value = await textFromElement(element);
       if (value) return value;
     } catch {
       // Try the next known LinkedIn selector.
@@ -28,7 +46,7 @@ async function firstText(driver, selectors) {
   for (const selector of selectors) {
     try {
       const element = await driver.findElement(By.css(selector));
-      const value = clean(await element.getText());
+      const value = await textFromElement(element);
       if (value) return value;
     } catch {
       // Try the next selector.
@@ -52,12 +70,15 @@ async function collectPage(driver) {
         'a[href*="/jobs/view/"]',
       ]);
       const company = await textFromCard(card, [
+        'a[href*="/company/"]',
+        '.artdeco-entity-lockup__subtitle a',
         '.artdeco-entity-lockup__subtitle',
         '.job-card-container__company-name',
       ]);
       const location = await textFromCard(card, [
-        '.artdeco-entity-lockup__caption',
         '.job-card-container__metadata-item',
+        '.artdeco-entity-lockup__caption',
+        '[data-view-name*="job-card"] .artdeco-entity-lockup__caption',
       ]);
 
       if (!url || !title) continue;
@@ -82,12 +103,14 @@ async function enrichJob(driver, job) {
   try {
     await driver.get(job.url);
     await driver.wait(until.urlContains('linkedin.com/jobs/'), 10000);
-    await driver.sleep(700);
+    await driver.sleep(900);
 
     const description = await firstText(driver, [
+      '.jobs-description-content__text',
       '.jobs-description__content',
       '.jobs-box__html-content',
       '#job-details',
+      'main .jobs-description',
     ]);
     const title = await firstText(driver, [
       '.job-details-jobs-unified-top-card__job-title',
@@ -95,10 +118,13 @@ async function enrichJob(driver, job) {
       'h1',
     ]);
     const company = await firstText(driver, [
+      '.job-details-jobs-unified-top-card__company-name a',
       '.job-details-jobs-unified-top-card__company-name',
+      '.jobs-unified-top-card__company-name a',
       '.jobs-unified-top-card__company-name',
     ]);
     const location = await firstText(driver, [
+      '.job-details-jobs-unified-top-card__primary-description-container',
       '.job-details-jobs-unified-top-card__bullet',
       '.jobs-unified-top-card__bullet',
     ]);
@@ -110,6 +136,7 @@ async function enrichJob(driver, job) {
       location: location || job.location,
       description,
       enrichedAt: new Date().toISOString(),
+      enrichmentFailed: !description,
     };
   } catch {
     return { ...job, description: '', enrichmentFailed: true };
