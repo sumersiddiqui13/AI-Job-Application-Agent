@@ -22,6 +22,7 @@ export function loadConfig(env = process.env) {
     browserHeadless: booleanFromEnv('BROWSER_HEADLESS', false, env),
     browserUserDataDir: env.BROWSER_USER_DATA_DIR || '',
     maxJobPages: numberFromEnv('MAX_JOB_PAGES', 3, env),
+    maxJobsToEnrich: numberFromEnv('MAX_JOBS_TO_ENRICH', 20, env),
     collectionTimeoutMs: numberFromEnv('JOB_COLLECTION_TIMEOUT_MS', 15000, env),
   };
 }
