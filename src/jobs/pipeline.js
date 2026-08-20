@@ -21,9 +21,16 @@ export async function collectAndPrepare({ config, searchConfig }) {
   });
   const jobs = await collectLinkedInJobs(config, searchUrls);
   const prepared = [];
+  const scores = [];
 
   for (const job of jobs) {
     const score = scoreJob(job, profile);
+    scores.push({
+      title: job.title,
+      company: job.company,
+      score,
+    });
+
     const eligible = shouldApply(score, searchConfig.minimumMatchScore ?? config.minMatchScore);
     if (!eligible) continue;
     if (await store.hasApplied(job.jobKey)) continue;
@@ -43,5 +50,5 @@ export async function collectAndPrepare({ config, searchConfig }) {
     prepared.push(application);
   }
 
-  return { totalCollected: jobs.length, prepared, searchUrls };
+  return { totalCollected: jobs.length, prepared, searchUrls, scores };
 }
