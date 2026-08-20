@@ -19,6 +19,7 @@ export function loadConfig(env = process.env) {
     openAiApiKey: env.OPENAI_API_KEY || '',
     openAiModel: env.OPENAI_MODEL || 'gpt-4o-mini',
     jobSearchUrl: env.JOB_SEARCH_URL || 'https://www.linkedin.com/jobs/',
+    jobSearchBaseUrl: env.JOB_SEARCH_BASE_URL || 'https://www.linkedin.com/jobs/search/',
     linkedinUsername: env.LINKEDIN_USERNAME || '',
     linkedinPassword: env.LINKEDIN_PASSWORD || '',
     browserHeadless: booleanFromEnv('BROWSER_HEADLESS', false, env),
