@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import { collectLinkedInJobs } from '../browser/linkedinCollector.js';
 import { ApplicationStore } from '../core/applicationStore.js';
-import { scoreJob, shouldApply } from '../core/jobMatcher.js';
+import { explainJobMatch, scoreJob, shouldApply } from '../core/jobMatcher.js';
 
 async function readJson(filePath) {
   const raw = await fs.readFile(filePath, 'utf8');
@@ -19,13 +19,17 @@ export async function collectAndPrepare({ config, searchConfig }) {
     const eligible = shouldApply(score, searchConfig.minimumMatchScore ?? config.minMatchScore);
     if (!eligible) continue;
     if (await store.hasApplied(job.jobKey)) continue;
+    const explanation = explainJobMatch(job, profile);
 
     const application = await store.add({
       jobKey: job.jobKey,
       source: job.source,
       job,
       matchScore: score,
-      status: 'prepared',
+      matchReason: explanation.summary,
+      matchedSkills: explanation.matchedSkills,
+      titleMatch: explanation.titleMatch,
+      answerDrafts: [],
       approvalRequired: config.requireApproval,
     });
     prepared.push(application);
