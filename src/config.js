@@ -15,6 +15,7 @@ export function loadConfig(env = process.env) {
     dataDir: env.DATA_DIR || './data',
     profilePath: env.PROFILE_PATH || './data/profile.json',
     applicationsPath: env.APPLICATIONS_PATH || './data/applications.json',
+    searchConfigPath: env.SEARCH_CONFIG_PATH || './config/search.json',
     openAiModel: env.OPENAI_MODEL || 'gpt-4o-mini',
     jobSearchUrl: env.JOB_SEARCH_URL || 'https://www.linkedin.com/jobs/',
     linkedinUsername: env.LINKEDIN_USERNAME || '',
