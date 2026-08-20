@@ -5,8 +5,8 @@ const WORK_MODE_FILTERS = {
 };
 
 const EMPLOYMENT_TYPE_FILTERS = {
-  full-time: 'F',
-  part-time: 'P',
+  'full-time': 'F',
+  'part-time': 'P',
   contract: 'C',
   temporary: 'T',
   volunteer: 'V',
@@ -36,7 +36,12 @@ export function buildLinkedInSearchUrl({
     .filter(Boolean);
 
   if (titleList.length) {
-    url.searchParams.set('keywords', titleList.length === 1 ? titleList[0] : titleList.map((title) => `"${title}"`).join(' OR '));
+    url.searchParams.set(
+      'keywords',
+      titleList.length === 1
+        ? titleList[0]
+        : titleList.map((title) => `"${title}"`).join(' OR '),
+    );
   }
   if (location) url.searchParams.set('location', String(location).trim());
   if (modeFilters.length) url.searchParams.set('f_WT', modeFilters.join(','));
