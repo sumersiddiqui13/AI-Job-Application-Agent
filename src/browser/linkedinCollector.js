@@ -139,33 +139,40 @@ async function clickNextPage(driver) {
   return false;
 }
 
-export async function collectLinkedInJobs(config) {
+async function loginIfNeeded(driver, config) {
+  if (!config.linkedinUsername || !config.linkedinPassword) return;
+
+  try {
+    const username = await driver.wait(
+      until.elementLocated(By.id('username')),
+      config.collectionTimeoutMs,
+    );
+    const password = await driver.findElement(By.id('password'));
+    await username.sendKeys(config.linkedinUsername);
+    await password.sendKeys(config.linkedinPassword);
+    await password.submit();
+    await driver.sleep(1500);
+  } catch {
+    // Existing session or changed login page is okay.
+  }
+}
+
+export async function collectLinkedInJobs(config, searchUrls = [config.jobSearchUrl]) {
   const driver = await createBrowser(config);
   const jobs = new Map();
 
   try {
-    await driver.get(config.jobSearchUrl);
+    for (const searchUrl of searchUrls) {
+      await driver.get(searchUrl);
+      await loginIfNeeded(driver, config);
+      await driver.get(searchUrl);
+      await driver.wait(until.urlContains('linkedin.com'), config.collectionTimeoutMs);
 
-    if (config.linkedinUsername && config.linkedinPassword) {
-      try {
-        const username = await driver.wait(until.elementLocated(By.id('username')), config.collectionTimeoutMs);
-        const password = await driver.findElement(By.id('password'));
-        await username.sendKeys(config.linkedinUsername);
-        await password.sendKeys(config.linkedinPassword);
-        await password.submit();
-        await driver.sleep(1500);
-      } catch {
-        // An existing session or changed login page is okay.
+      for (let page = 0; page < config.maxJobPages; page += 1) {
+        const pageJobs = await collectPage(driver);
+        for (const job of pageJobs) jobs.set(job.jobKey, job);
+        if (!(await clickNextPage(driver))) break;
       }
-    }
-
-    await driver.get(config.jobSearchUrl);
-    await driver.wait(until.urlContains('linkedin.com'), config.collectionTimeoutMs);
-
-    for (let page = 0; page < config.maxJobPages; page += 1) {
-      const pageJobs = await collectPage(driver);
-      for (const job of pageJobs) jobs.set(job.jobKey, job);
-      if (!(await clickNextPage(driver))) break;
     }
 
     const collected = [...jobs.values()];
