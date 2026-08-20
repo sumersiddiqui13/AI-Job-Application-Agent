@@ -146,26 +146,33 @@ async function clickNextPage(driver) {
   return false;
 }
 
-async function findLoginField(driver, selectors) {
-  for (const selector of selectors) {
-    try {
-      return await driver.findElement(By.css(selector));
-    } catch {
-      // Try the next known LinkedIn selector.
+async function findInteractableField(driver, selectors, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const selector of selectors) {
+      try {
+        const elements = await driver.findElements(By.css(selector));
+        for (const element of elements) {
+          if (await element.isDisplayed() && await element.isEnabled()) return element;
+        }
+      } catch {
+        // Try the next selector/element.
+      }
     }
+    await driver.sleep(250);
   }
   return null;
 }
 
 async function loginIfNeeded(driver, config) {
-  const username = await findLoginField(driver, [
+  const username = await findInteractableField(driver, [
     '#session_key',
     '#username',
     'input[name="session_key"]',
     'input[name="username"]',
     'input[type="email"]',
   ]);
-  const password = await findLoginField(driver, [
+  const password = await findInteractableField(driver, [
     '#session_password',
     '#password',
     'input[name="session_password"]',
@@ -179,8 +186,13 @@ async function loginIfNeeded(driver, config) {
     throw new Error('LinkedIn login is required. Set LINKEDIN_USERNAME and LINKEDIN_PASSWORD in .env, or use an existing browser session.');
   }
 
+  await driver.executeScript('arguments[0].scrollIntoView({block: "center"});', username);
+  await username.click();
   await username.clear();
   await username.sendKeys(config.linkedinUsername);
+
+  await driver.executeScript('arguments[0].scrollIntoView({block: "center"});', password);
+  await password.click();
   await password.clear();
   await password.sendKeys(config.linkedinPassword);
   await password.submit();
