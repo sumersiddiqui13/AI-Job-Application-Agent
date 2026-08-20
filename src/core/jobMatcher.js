@@ -1,7 +1,7 @@
 const clamp = (value) => Math.max(0, Math.min(100, Math.round(value)));
 
 function normalized(text = '') {
-  return text.toLowerCase().replace(/[^a-z0-9+#.\s-]/g, ' ');
+  return String(text).toLowerCase().replace(/[^a-z0-9+#.\s-]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function tokenSet(text) {
@@ -19,13 +19,30 @@ export function scoreJob(job, profile) {
   const requiredSkills = (job.requiredSkills ?? []).map(normalized).filter(Boolean);
   const matchedRequired = requiredSkills.filter((skill) => jobText.includes(skill));
   const skillMatches = profileSkills.filter((skill) => jobText.includes(skill));
-  const skillScore = profileSkills.length ? (skillMatches.length / profileSkills.length) * 55 : 0;
-  const requiredScore = requiredSkills.length ? (matchedRequired.length / requiredSkills.length) * 35 : 35;
-  const titleTokens = tokenSet(job.title);
-  const targetTokens = new Set((profile.targetTitles ?? []).flatMap((x) => [...tokenSet(x)]));
-  const titleOverlap = [...titleTokens].filter((x) => targetTokens.has(x)).length;
-  const titleScore = targetTokens.size ? Math.min(10, (titleOverlap / Math.min(4, targetTokens.size)) * 10) : 0;
-  return clamp(skillScore + requiredScore + titleScore);
+
+  const title = normalized(job.title);
+  const targets = (profile.targetTitles ?? []).map(normalized).filter(Boolean);
+  const exactTitle = targets.some((target) => title === target || title.startsWith(`${target} `));
+
+  let titleScore = exactTitle ? 40 : 0;
+  if (!exactTitle && targets.length) {
+    const titleTokens = tokenSet(title);
+    const bestOverlap = Math.max(...targets.map((target) => {
+      const targetTokens = tokenSet(target);
+      if (!targetTokens.size) return 0;
+      return [...targetTokens].filter((token) => titleTokens.has(token)).length / targetTokens.size;
+    }), 0);
+    titleScore = Math.round(bestOverlap * 30);
+  }
+
+  // Relevant matches should be rewarded by the number of skills found in the
+  // job, not diluted by the candidate's entire historical skill inventory.
+  const skillScore = Math.min(45, skillMatches.length * 9);
+  const requiredScore = requiredSkills.length
+    ? Math.round((matchedRequired.length / requiredSkills.length) * 15)
+    : 0;
+
+  return clamp(titleScore + skillScore + requiredScore);
 }
 
 export function explainJobMatch(job, profile) {
