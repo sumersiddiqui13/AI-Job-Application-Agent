@@ -22,9 +22,12 @@ export function scoreJob(job, profile) {
 
   const title = normalized(job.title);
   const targets = (profile.targetTitles ?? []).map(normalized).filter(Boolean);
-  const exactTitle = targets.some((target) => title === target || title.startsWith(`${target} `));
+  const exactTitle = targets.some((target) => title === target);
 
-  let titleScore = exactTitle ? 40 : 0;
+  // A configured target title is itself strong evidence of relevance. This is
+  // important when LinkedIn only exposes the search-card title and the full
+  // description cannot be enriched.
+  let titleScore = exactTitle ? 75 : 0;
   if (!exactTitle && targets.length) {
     const titleTokens = tokenSet(title);
     const bestOverlap = Math.max(...targets.map((target) => {
@@ -32,14 +35,14 @@ export function scoreJob(job, profile) {
       if (!targetTokens.size) return 0;
       return [...targetTokens].filter((token) => titleTokens.has(token)).length / targetTokens.size;
     }), 0);
-    titleScore = Math.round(bestOverlap * 30);
+    titleScore = Math.round(bestOverlap * 45);
   }
 
-  // Relevant matches should be rewarded by the number of skills found in the
-  // job, not diluted by the candidate's entire historical skill inventory.
-  const skillScore = Math.min(45, skillMatches.length * 9);
+  // Reward skills that are actually visible in the job data without dividing
+  // by the candidate's entire historical skill inventory.
+  const skillScore = Math.min(25, skillMatches.length * 5);
   const requiredScore = requiredSkills.length
-    ? Math.round((matchedRequired.length / requiredSkills.length) * 15)
+    ? Math.round((matchedRequired.length / requiredSkills.length) * 10)
     : 0;
 
   return clamp(titleScore + skillScore + requiredScore);
@@ -49,7 +52,7 @@ export function explainJobMatch(job, profile) {
   const skills = matchedSkills(job, profile);
   const targets = profile.targetTitles ?? [];
   const title = String(job.title ?? '').toLowerCase();
-  const titleMatch = targets.find((target) => title.includes(String(target).toLowerCase()));
+  const titleMatch = targets.find((target) => title === String(target).toLowerCase());
   return {
     matchedSkills: skills,
     titleMatch: titleMatch || null,
