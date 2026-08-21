@@ -1,7 +1,14 @@
 import { By, until } from 'selenium-webdriver';
 import { createBrowser, closeBrowser } from './driver.js';
 
-const JOB_CARD_SELECTOR = '.jobs-search-results__list-item, .job-card-container';
+const JOB_CARD_SELECTORS = [
+  '.jobs-search-results__list-item',
+  '.jobs-search-results-list__list-item',
+  '.job-card-container',
+  'li[data-occludable-job-id]',
+];
+const JOB_CARD_SELECTOR = JOB_CARD_SELECTORS.join(', ');
+const JOB_LINK_SELECTOR = 'a[href*="/jobs/view/"]';
 
 function clean(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -17,9 +24,7 @@ async function textFromCard(card, selectors) {
       const element = await card.findElement(By.css(selector));
       const value = clean(await element.getText());
       if (value) return value;
-    } catch {
-      // Try the next known LinkedIn selector.
-    }
+    } catch {}
   }
   return '';
 }
@@ -30,51 +35,51 @@ async function firstText(driver, selectors) {
       const element = await driver.findElement(By.css(selector));
       const value = clean(await element.getText());
       if (value) return value;
-    } catch {
-      // Try the next selector.
-    }
+    } catch {}
   }
   return '';
 }
 
-async function collectPage(driver) {
-  await driver.wait(until.elementsLocated(By.css(JOB_CARD_SELECTOR)), 15000);
-  const cards = await driver.findElements(By.css(JOB_CARD_SELECTOR));
-  const jobs = [];
-
-  for (const card of cards) {
+async function cardFromLink(link) {
+  for (const xpath of [
+    './ancestor::li[1]',
+    './ancestor::*[contains(@class,"job-card")][1]',
+    './ancestor::*[@data-occludable-job-id][1]',
+  ]) {
     try {
-      const link = await card.findElement(By.css('a[href*="/jobs/view/"]'));
-      const url = (await link.getAttribute('href'))?.split('?')[0] || '';
-      const title = await textFromCard(card, [
-        '.job-card-list__title',
-        '.job-card-container__link',
-        'a[href*="/jobs/view/"]',
-      ]);
-      const company = await textFromCard(card, [
-        '.artdeco-entity-lockup__subtitle',
-        '.job-card-container__company-name',
-      ]);
-      const location = await textFromCard(card, [
-        '.artdeco-entity-lockup__caption',
-        '.job-card-container__metadata-item',
-      ]);
+      const card = await link.findElement(By.xpath(xpath));
+      if (await card.isDisplayed()) return card;
+    } catch {}
+  }
+  return link;
+}
 
-      if (!url || !title) continue;
-      jobs.push({
-        jobKey: jobKey({ url, title, company, location }),
-        source: 'linkedin',
-        url,
-        title,
-        company,
-        location,
-        collectedAt: new Date().toISOString(),
-      });
-    } catch {
-      // One malformed card should not abort the page.
-    }
+async function collectPage(driver) {
+  let cards = await driver.findElements(By.css(JOB_CARD_SELECTOR));
+  if (cards.length === 0) {
+    const links = await driver.findElements(By.css(JOB_LINK_SELECTOR));
+    if (links.length === 0) throw new Error('LinkedIn search page contains no job cards or job links.');
+    cards = [];
+    for (const link of links) cards.push(await cardFromLink(link));
   }
 
+  const jobs = [];
+  const seen = new Set();
+  for (const card of cards) {
+    try {
+      const link = await card.findElement(By.css(JOB_LINK_SELECTOR));
+      const url = (await link.getAttribute('href'))?.split('?')[0] || '';
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      const title = await textFromCard(card, [
+        '.job-card-list__title', '.job-card-container__link', '.artdeco-entity-lockup__title', 'a[href*="/jobs/view/"]',
+      ]) || clean(await link.getAttribute('aria-label')) || clean(await link.getText());
+      const company = await textFromCard(card, ['.artdeco-entity-lockup__subtitle', '.job-card-container__company-name']);
+      const location = await textFromCard(card, ['.artdeco-entity-lockup__caption', '.job-card-container__metadata-item']);
+      if (!title) continue;
+      jobs.push({ jobKey: jobKey({ url, title, company, location }), source: 'linkedin', url, title, company, location, collectedAt: new Date().toISOString() });
+    } catch {}
+  }
   return jobs;
 }
 
@@ -82,25 +87,32 @@ async function enrichJob(driver, job) {
   try {
     await driver.get(job.url);
     await driver.wait(until.urlContains('linkedin.com/jobs/'), 10000);
-    await driver.sleep(700);
+    await driver.sleep(1000);
 
     const description = await firstText(driver, [
+      '.jobs-description-content__text',
       '.jobs-description__content',
       '.jobs-box__html-content',
       '#job-details',
+      '[class*="jobs-description"]',
+      '[id*="job-details"]',
     ]);
     const title = await firstText(driver, [
       '.job-details-jobs-unified-top-card__job-title',
       '.jobs-unified-top-card__job-title',
+      '.jobs-unified-top-card__job-title-link',
       'h1',
     ]);
     const company = await firstText(driver, [
       '.job-details-jobs-unified-top-card__company-name',
       '.jobs-unified-top-card__company-name',
+      '.jobs-unified-top-card__primary-description a',
+      '[class*="company-name"]',
     ]);
     const location = await firstText(driver, [
       '.job-details-jobs-unified-top-card__bullet',
       '.jobs-unified-top-card__bullet',
+      '[class*="job-location"]',
     ]);
 
     return {
@@ -117,62 +129,75 @@ async function enrichJob(driver, job) {
 }
 
 async function clickNextPage(driver) {
-  const selectors = [
-    'button[aria-label*="Next"]',
-    'button[aria-label*="next"]',
-    '.artdeco-pagination__button--next',
-  ];
-
-  for (const selector of selectors) {
+  for (const selector of ['button[aria-label*="Next"]', 'button[aria-label*="next"]', '.artdeco-pagination__button--next']) {
     try {
       const button = await driver.findElement(By.css(selector));
-      const disabled = await button.getAttribute('disabled');
-      const ariaDisabled = await button.getAttribute('aria-disabled');
-      if (disabled !== null || ariaDisabled === 'true') return false;
+      if ((await button.getAttribute('disabled')) !== null || (await button.getAttribute('aria-disabled')) === 'true') return false;
       await button.click();
       await driver.sleep(1200);
       return true;
-    } catch {
-      // Try the next selector.
-    }
+    } catch {}
   }
   return false;
 }
 
-export async function collectLinkedInJobs(config) {
+async function findInteractableField(driver, selectors, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const selector of selectors) {
+      try {
+        for (const element of await driver.findElements(By.css(selector))) {
+          if (await element.isDisplayed() && await element.isEnabled()) return element;
+        }
+      } catch {}
+    }
+    await driver.sleep(250);
+  }
+  return null;
+}
+
+export async function loginIfNeeded(driver, config) {
+  const username = await findInteractableField(driver, ['#session_key', '#username', 'input[name="session_key"]', 'input[name="username"]', 'input[type="email"]']);
+  const password = await findInteractableField(driver, ['#session_password', '#password', 'input[name="session_password"]', 'input[name="password"]', 'input[type="password"]']);
+  if (!username || !password) return false;
+  if (!config.linkedinUsername || !config.linkedinPassword) throw new Error('LinkedIn login is required. Set LINKEDIN_USERNAME and LINKEDIN_PASSWORD in .env, or use an existing browser session.');
+  await driver.executeScript('arguments[0].scrollIntoView({block: "center"});', username);
+  await username.click(); await username.clear(); await username.sendKeys(config.linkedinUsername);
+  await driver.executeScript('arguments[0].scrollIntoView({block: "center"});', password);
+  await password.click(); await password.clear(); await password.sendKeys(config.linkedinPassword); await password.submit();
+  await driver.sleep(2500);
+  return true;
+}
+
+async function ensureJobResults(driver) {
+  try {
+    await driver.wait(async () => (await driver.findElements(By.css(JOB_CARD_SELECTOR))).length > 0 || (await driver.findElements(By.css(JOB_LINK_SELECTOR))).length > 0, 20000);
+  } catch {
+    const currentUrl = await driver.getCurrentUrl();
+    const title = await driver.getTitle();
+    throw new Error(`LinkedIn job results did not load. Current URL: ${currentUrl}; page title: ${title}. The account may still require verification/CAPTCHA, or LinkedIn may have changed the page layout.`);
+  }
+}
+
+export async function collectLinkedInJobs(config, searchUrls = [config.jobSearchUrl]) {
   const driver = await createBrowser(config);
   const jobs = new Map();
-
   try {
-    await driver.get(config.jobSearchUrl);
-
-    if (config.linkedinUsername && config.linkedinPassword) {
-      try {
-        const username = await driver.wait(until.elementLocated(By.id('username')), config.collectionTimeoutMs);
-        const password = await driver.findElement(By.id('password'));
-        await username.sendKeys(config.linkedinUsername);
-        await password.sendKeys(config.linkedinPassword);
-        await password.submit();
-        await driver.sleep(1500);
-      } catch {
-        // An existing session or changed login page is okay.
+    for (const searchUrl of searchUrls) {
+      await driver.get(searchUrl);
+      await loginIfNeeded(driver, config);
+      await driver.get(searchUrl);
+      await driver.wait(until.urlContains('linkedin.com'), config.collectionTimeoutMs);
+      await ensureJobResults(driver);
+      for (let page = 0; page < config.maxJobPages; page += 1) {
+        const pageJobs = await collectPage(driver);
+        for (const job of pageJobs) jobs.set(job.jobKey, job);
+        if (!(await clickNextPage(driver))) break;
       }
     }
-
-    await driver.get(config.jobSearchUrl);
-    await driver.wait(until.urlContains('linkedin.com'), config.collectionTimeoutMs);
-
-    for (let page = 0; page < config.maxJobPages; page += 1) {
-      const pageJobs = await collectPage(driver);
-      for (const job of pageJobs) jobs.set(job.jobKey, job);
-      if (!(await clickNextPage(driver))) break;
-    }
-
     const collected = [...jobs.values()];
     const enriched = [];
-    for (const job of collected.slice(0, config.maxJobsToEnrich)) {
-      enriched.push(await enrichJob(driver, job));
-    }
+    for (const job of collected.slice(0, config.maxJobsToEnrich)) enriched.push(await enrichJob(driver, job));
     return enriched.concat(collected.slice(config.maxJobsToEnrich));
   } finally {
     await closeBrowser(driver);

@@ -17,6 +17,15 @@ test('scores a relevant job higher than an unrelated job', () => {
   assert.equal(shouldApply(unrelated, 75), false);
 });
 
+test('configured exact target titles qualify even without job description enrichment', () => {
+  const score = scoreJob({ title: 'Data Engineer', description: '' }, {
+    skills: ['AWS', 'Python', 'SQL'],
+    targetTitles: ['Data Engineer', 'AWS Data Engineer'],
+  });
+  assert.equal(score, 75);
+  assert.equal(shouldApply(score, 75), true);
+});
+
 test('submission requires explicit approval', () => {
   const application = { status: 'prepared' };
   assert.equal(canSubmit(application, { approved: true }), false);

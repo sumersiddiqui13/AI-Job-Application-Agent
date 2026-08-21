@@ -15,6 +15,9 @@ async function collect(config) {
   const result = await collectAndPrepare({ config, searchConfig });
   console.log(`Collected jobs: ${result.totalCollected}`);
   console.log(`Prepared applications: ${result.prepared.length}`);
+  for (const item of result.scores) {
+    console.log(`Score: ${item.score}% | ${item.title} | ${item.company}`);
+  }
   for (const application of result.prepared) {
     console.log(`- ${application.job.title} | ${application.job.company} | ${application.matchScore}% | ${application.job.url}`);
   }

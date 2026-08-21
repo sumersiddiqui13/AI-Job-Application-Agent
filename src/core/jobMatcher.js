@@ -1,7 +1,7 @@
 const clamp = (value) => Math.max(0, Math.min(100, Math.round(value)));
 
 function normalized(text = '') {
-  return text.toLowerCase().replace(/[^a-z0-9+#.\s-]/g, ' ');
+  return String(text).toLowerCase().replace(/[^a-z0-9+#.\s-]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function tokenSet(text) {
@@ -19,20 +19,40 @@ export function scoreJob(job, profile) {
   const requiredSkills = (job.requiredSkills ?? []).map(normalized).filter(Boolean);
   const matchedRequired = requiredSkills.filter((skill) => jobText.includes(skill));
   const skillMatches = profileSkills.filter((skill) => jobText.includes(skill));
-  const skillScore = profileSkills.length ? (skillMatches.length / profileSkills.length) * 55 : 0;
-  const requiredScore = requiredSkills.length ? (matchedRequired.length / requiredSkills.length) * 35 : 35;
-  const titleTokens = tokenSet(job.title);
-  const targetTokens = new Set((profile.targetTitles ?? []).flatMap((x) => [...tokenSet(x)]));
-  const titleOverlap = [...titleTokens].filter((x) => targetTokens.has(x)).length;
-  const titleScore = targetTokens.size ? Math.min(10, (titleOverlap / Math.min(4, targetTokens.size)) * 10) : 0;
-  return clamp(skillScore + requiredScore + titleScore);
+
+  const title = normalized(job.title);
+  const targets = (profile.targetTitles ?? []).map(normalized).filter(Boolean);
+  const exactTitle = targets.some((target) => title === target);
+
+  // A configured target title is itself strong evidence of relevance. This is
+  // important when LinkedIn only exposes the search-card title and the full
+  // description cannot be enriched.
+  let titleScore = exactTitle ? 75 : 0;
+  if (!exactTitle && targets.length) {
+    const titleTokens = tokenSet(title);
+    const bestOverlap = Math.max(...targets.map((target) => {
+      const targetTokens = tokenSet(target);
+      if (!targetTokens.size) return 0;
+      return [...targetTokens].filter((token) => titleTokens.has(token)).length / targetTokens.size;
+    }), 0);
+    titleScore = Math.round(bestOverlap * 45);
+  }
+
+  // Reward skills that are actually visible in the job data without dividing
+  // by the candidate's entire historical skill inventory.
+  const skillScore = Math.min(25, skillMatches.length * 5);
+  const requiredScore = requiredSkills.length
+    ? Math.round((matchedRequired.length / requiredSkills.length) * 10)
+    : 0;
+
+  return clamp(titleScore + skillScore + requiredScore);
 }
 
 export function explainJobMatch(job, profile) {
   const skills = matchedSkills(job, profile);
   const targets = profile.targetTitles ?? [];
   const title = String(job.title ?? '').toLowerCase();
-  const titleMatch = targets.find((target) => title.includes(String(target).toLowerCase()));
+  const titleMatch = targets.find((target) => title === String(target).toLowerCase());
   return {
     matchedSkills: skills,
     titleMatch: titleMatch || null,

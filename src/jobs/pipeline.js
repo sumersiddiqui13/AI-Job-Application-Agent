@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import { collectLinkedInJobs } from '../browser/linkedinCollector.js';
+import { buildLinkedInSearchUrls } from '../browser/linkedinSearchUrl.js';
 import { ApplicationStore } from '../core/applicationStore.js';
 import { explainJobMatch, scoreJob, shouldApply } from '../core/jobMatcher.js';
 
@@ -11,11 +12,25 @@ async function readJson(filePath) {
 export async function collectAndPrepare({ config, searchConfig }) {
   const profile = await readJson(config.profilePath);
   const store = new ApplicationStore(config.applicationsPath);
-  const jobs = await collectLinkedInJobs(config);
+  const searchUrls = buildLinkedInSearchUrls({
+    baseUrl: config.jobSearchBaseUrl,
+    locations: searchConfig.locations,
+    titles: searchConfig.titles,
+    workModes: searchConfig.workModes,
+    employmentTypes: searchConfig.employmentTypes,
+  });
+  const jobs = await collectLinkedInJobs(config, searchUrls);
   const prepared = [];
+  const scores = [];
 
   for (const job of jobs) {
     const score = scoreJob(job, profile);
+    scores.push({
+      title: job.title,
+      company: job.company,
+      score,
+    });
+
     const eligible = shouldApply(score, searchConfig.minimumMatchScore ?? config.minMatchScore);
     if (!eligible) continue;
     if (await store.hasApplied(job.jobKey)) continue;
@@ -35,5 +50,5 @@ export async function collectAndPrepare({ config, searchConfig }) {
     prepared.push(application);
   }
 
-  return { totalCollected: jobs.length, prepared };
+  return { totalCollected: jobs.length, prepared, searchUrls, scores };
 }
