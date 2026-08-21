@@ -3,28 +3,41 @@ import { By } from 'selenium-webdriver';
 import { createBrowser, closeBrowser } from '../browser/driver.js';
 import { ApplicationStore } from '../core/applicationStore.js';
 
+// LinkedIn changes its Easy Apply markup frequently. Keep several selectors
+// and fall back to visible button text instead of relying on one class name.
 const EASY_APPLY_SELECTORS = [
-  'button.jobs-apply-button',
-  'button[aria-label*="Easy Apply"]',
-  'button[aria-label*="Easy apply"]',
+  { type: 'css', value: 'button.jobs-apply-button' },
+  { type: 'css', value: 'button[aria-label*="Easy Apply" i]' },
+  { type: 'css', value: 'button[aria-label*="Easy apply" i]' },
+  { type: 'css', value: 'button[data-control-name*="easy_apply" i]' },
+  { type: 'css', value: 'button[data-control-name*="easyApply" i]' },
+  {
+    type: 'xpath',
+    value: '//button[contains(translate(normalize-space(.), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "easy apply")]'
+  },
 ];
 
-async function firstVisible(driver, selectors, timeout = 5000) {
+async function findElements(driver, selector) {
+  const by = selector.type === 'xpath' ? By.xpath(selector.value) : By.css(selector.value);
+  return driver.findElements(by);
+}
+
+async function firstVisible(driver, selectors, timeout = 10000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
     for (const selector of selectors) {
-      for (const element of await driver.findElements(By.css(selector))) {
+      for (const element of await findElements(driver, selector)) {
         if (await element.isDisplayed().catch(() => false)) return element;
       }
     }
-    await driver.sleep(250);
+    await driver.sleep(300);
   }
   return null;
 }
 
 async function fillInput(driver, selectors, value) {
   if (!value) return 0;
-  const input = await firstVisible(driver, selectors, 1500);
+  const input = await firstVisible(driver, selectors.map((value) => ({ type: 'css', value })), 2000);
   if (!input) return 0;
   const current = await input.getAttribute('value').catch(() => '');
   if (current) return 0;
@@ -79,16 +92,20 @@ export async function prepareApprovedApplication({ config, applicationId }) {
     await store.updateStatus(application.id, 'in_progress', { executionMode: 'dry-run' });
     await driver.get(application.job.url);
 
-    const easyApply = await firstVisible(driver, EASY_APPLY_SELECTORS, 5000);
+    const easyApply = await firstVisible(driver, EASY_APPLY_SELECTORS, 10000);
     if (!easyApply) {
+      const screenshotPath = `${config.dataDir}/application-${application.id}-easy-apply-not-found.png`;
+      await fs.mkdir(config.dataDir, { recursive: true });
+      await fs.writeFile(screenshotPath, await driver.takeScreenshot(), 'base64');
       return await store.updateStatus(application.id, 'needs_review', {
         executionMode: 'dry-run',
         executionError: 'Easy Apply button was not found.',
+        screenshotPath,
       });
     }
 
     await easyApply.click();
-    await driver.sleep(750);
+    await driver.sleep(1000);
     const filledFields = await fillKnownFields(driver, profile);
     const screenshotPath = `${config.dataDir}/application-${application.id}.png`;
     await fs.mkdir(config.dataDir, { recursive: true });
