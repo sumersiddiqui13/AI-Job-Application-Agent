@@ -1,19 +1,28 @@
 import fs from 'node:fs/promises';
 import { By } from 'selenium-webdriver';
 import { createBrowser, closeBrowser } from '../browser/driver.js';
+import { loginIfNeeded } from '../browser/linkedinCollector.js';
 import { ApplicationStore } from '../core/applicationStore.js';
 
 // LinkedIn changes its Easy Apply markup frequently. Keep several selectors
 // and fall back to visible button text instead of relying on one class name.
 const EASY_APPLY_SELECTORS = [
   { type: 'css', value: 'button.jobs-apply-button' },
+  { type: 'css', value: 'a.jobs-apply-button' },
   { type: 'css', value: 'button[aria-label*="Easy Apply" i]' },
+  { type: 'css', value: 'a[aria-label*="Easy Apply" i]' },
   { type: 'css', value: 'button[aria-label*="Easy apply" i]' },
+  { type: 'css', value: 'a[aria-label*="Easy apply" i]' },
   { type: 'css', value: 'button[data-control-name*="easy_apply" i]' },
   { type: 'css', value: 'button[data-control-name*="easyApply" i]' },
+  { type: 'css', value: '[data-control-name="jobdetails_topcard_inapply"]' },
   {
     type: 'xpath',
     value: '//button[contains(translate(normalize-space(.), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "easy apply")]'
+  },
+  {
+    type: 'xpath',
+    value: '//a[contains(translate(normalize-space(.), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "easy apply")]'
   },
 ];
 
@@ -91,19 +100,27 @@ export async function prepareApprovedApplication({ config, applicationId }) {
   try {
     await store.updateStatus(application.id, 'in_progress', { executionMode: 'dry-run' });
     await driver.get(application.job.url);
+    await loginIfNeeded(driver, config);
+    if (await driver.getCurrentUrl().then((url) => !url.includes('/jobs/')).catch(() => false)) {
+      await driver.get(application.job.url);
+    }
+    await driver.sleep(1500);
+    await driver.executeScript('window.scrollTo(0, 0);').catch(() => {});
 
-    const easyApply = await firstVisible(driver, EASY_APPLY_SELECTORS, 10000);
+    const easyApply = await firstVisible(driver, EASY_APPLY_SELECTORS, 12000);
     if (!easyApply) {
       const screenshotPath = `${config.dataDir}/application-${application.id}-easy-apply-not-found.png`;
       await fs.mkdir(config.dataDir, { recursive: true });
       await fs.writeFile(screenshotPath, await driver.takeScreenshot(), 'base64');
       return await store.updateStatus(application.id, 'needs_review', {
         executionMode: 'dry-run',
-        executionError: 'Easy Apply button was not found.',
+        executionError: 'LinkedIn Easy Apply control was not found. This job may use external application or the page/session may require review.',
         screenshotPath,
       });
     }
 
+    await driver.executeScript('arguments[0].scrollIntoView({block: "center", inline: "nearest"});', easyApply).catch(() => {});
+    await driver.sleep(300);
     await easyApply.click();
     await driver.sleep(1000);
     const filledFields = await fillKnownFields(driver, profile);

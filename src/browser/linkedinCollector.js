@@ -156,7 +156,7 @@ async function findInteractableField(driver, selectors, timeoutMs = 10000) {
   return null;
 }
 
-async function loginIfNeeded(driver, config) {
+export async function loginIfNeeded(driver, config) {
   const username = await findInteractableField(driver, ['#session_key', '#username', 'input[name="session_key"]', 'input[name="username"]', 'input[type="email"]']);
   const password = await findInteractableField(driver, ['#session_password', '#password', 'input[name="session_password"]', 'input[name="password"]', 'input[type="password"]']);
   if (!username || !password) return false;
