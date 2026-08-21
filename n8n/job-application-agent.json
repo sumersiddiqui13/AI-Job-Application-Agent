@@ -1,0 +1,201 @@
+{
+  "name": "AI Job Application Agent - Collect and Dry Run",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "1",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cd \"$JOB_AGENT_DIR\" && npm run collect && printf '\\n---APPLICATIONS---\\n' && cat data/applications.json"
+      },
+      "id": "2",
+      "name": "Collect Jobs",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $json.stdout ?? '';\nconst marker = '\\n---APPLICATIONS---\\n';\nconst jsonText = output.includes(marker) ? output.split(marker).pop() : '[]';\nlet applications = [];\ntry { applications = JSON.parse(jsonText); } catch (error) { throw new Error(`Could not parse applications.json: ${error.message}`); }\nconst prepared = applications.filter((app) => app.status === 'prepared');\nconst approved = applications.filter((app) => app.status === 'approved');\nreturn [{ json: { collectedOutput: output, preparedCount: prepared.length, approvedCount: approved.length, prepared, approved } }];"
+      },
+      "id": "3",
+      "name": "Read Application State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "approved-check",
+              "leftValue": "={{ $json.approvedCount }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "4",
+      "name": "Approved Applications?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        980,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cd \"$JOB_AGENT_DIR\" && node -e \"const fs=require('fs'); const apps=JSON.parse(fs.readFileSync('data/applications.json','utf8')); const approved=apps.filter(a=>a.status==='approved'); console.log(approved.map(a=>a.id).join('\\n'));\""
+      },
+      "id": "5",
+      "name": "Get Approved IDs",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1220,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ids = String($json.stdout ?? '').split(/\\s+/).filter(Boolean);\nreturn ids.map((id) => ({ json: { applicationId: id } }));"
+      },
+      "id": "6",
+      "name": "Split Approved IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cd \"$JOB_AGENT_DIR\" && npm run dry-run -- \"{{$json.applicationId}}\""
+      },
+      "id": "7",
+      "name": "Browser Dry Run",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1700,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Collect Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Jobs": {
+      "main": [
+        [
+          {
+            "node": "Read Application State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Application State": {
+      "main": [
+        [
+          {
+            "node": "Approved Applications?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved Applications?": {
+      "main": [
+        [
+          {
+            "node": "Get Approved IDs",
+            "type": "main",
+            "index": 0
+          },
+          []
+        ],
+        []
+      ]
+    },
+    "Get Approved IDs": {
+      "main": [
+        [
+          {
+            "node": "Split Approved IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Approved IDs": {
+      "main": [
+        [
+          {
+            "node": "Browser Dry Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ai-job-agent-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
